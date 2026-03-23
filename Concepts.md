@@ -139,3 +139,26 @@ D'où nous faisons cet ajustement :
 
 puis retirons les -1
 
+
+<br><br>
+<br><br>
+
+---
+---
+---
+---
+
+<br><br>
+
+## Feature Selection
+
+L'analyse de corrélation révèle des redondances mathématiques évidentes (corrélations > 0.95). Bien que le Random Forest gère bien la colinéarité, conserver ces doublons alourdit le modèle et fausse l'analyse de l'importance des variables. Nous avons donc fait des choix basés sur le sens physique des variables :
+
+1. **Suppression des Moyennes (`_mean`) au profit des valeurs brutes** :
+   Calculer la moyenne spatiale locale d'un pixel (ex: `NDVI_mean`) donne une information quasi-identique au pixel lui-même (`NDVI`). Nous gardons la valeur brute, plus précise.
+
+2. **Suppression des Variances (`_var`) au profit du Contraste (`_contrast`)** :
+   La variance mesure une dispersion globale, tandis que le Contraste donne un poids quadratique aux différences entre pixels adjacents. Le Contraste amplifie les contours, les arêtes et les transitions brusques : c'est un atout majeur pour détecter les zones complexes comme l'**Urbain** ou délimiter les **Cultures**.
+
+3. **Suppression de l'Entropie (`_ent`) au profit de l'ASM (`_asm`)** :
+   L'Entropie (le désordre) et l'ASM (l'homogénéité) sont mathématiquement inverses. Nous conservons l'ASM car son interprétation physique est très intuitive : les milieux naturels denses ou lisses (Forêts, Eau) se distinguent par une très forte homogénéité.
