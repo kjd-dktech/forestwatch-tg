@@ -1,6 +1,8 @@
 import sys
+import os
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Security, Depends
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import pandas as pd
@@ -9,7 +11,11 @@ import io
 import logging
 from logging.handlers import RotatingFileHandler
 import json
+from dotenv import load_dotenv
 
+# --- Chargement des variables d'environnement ---
+load_dotenv()
+API_KEY = os.getenv("API_KEY", "not_set")
 # --- Configuration des chemins et imports ---
 CURRENT_FILE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = CURRENT_FILE_DIR.parent
@@ -53,7 +59,7 @@ app = FastAPI(
 
 # Configuration CORS pour autoriser les requêtes cross-origin (ex: depuis une WebApp ou GEE)
 origins = [
-    "*", # A restreindre plus tard lors de la mise en place de la sécurité (ex: listes de domaines de confiance)
+    "*",
 ]
 
 app.add_middleware(
@@ -64,6 +70,16 @@ app.add_middleware(
     allow_headers=["*"], # Autorise tous les headers
 )
 
+# --- Sécurité par clé API ---
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        logger.warning(f"Tentative de prédiction avec une clé API invalide.")
+        raise HTTPException(status_code=403, detail="Accès refusé : Clé API invalide.")
+    return api_key
+
+
 @app.get("/")
 def read_root():
     return {
@@ -73,7 +89,7 @@ def read_root():
     }
 
 @app.post("/predict/file/")
-async def predict_file(file: UploadFile = File(...)):
+async def predict_file(file: UploadFile = File(...), api_key: str = Depends(verify_api_key)):
     """
     Endpoint global acceptant un fichier CSV, JSON, GeoJSON ou Excel (xlsx, xls).
     Gère la détection de format et renvoie les prédictions.
@@ -155,7 +171,7 @@ async def predict_file(file: UploadFile = File(...)):
 
 
 @app.post("/predict/pixel/")
-def predict_pixel(data: Dict[str, Any] = Body(...)):
+def predict_pixel(data: Dict[str, Any] = Body(...), api_key: str = Depends(verify_api_key)):
     """
     Endpoint acceptant un objet JSON représentant un seul point (pixel).
     Idéal pour des requêtes unitaires "en temps réel".

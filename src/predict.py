@@ -2,10 +2,13 @@ import pandas as pd
 import numpy as np
 import joblib
 import sys
+import os
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
 
 # -------------------------------------------------------------------#
 # ------------ Configuration des chemins et imports -----------------#
@@ -60,14 +63,32 @@ class LandCoverPredictor:
             5: 'Eau'
         }
         
-        # Chargement des artefacts persistants
+        # Chargement des artefacts persistants avec fallback distant
         try:
+            hf_repo_id = os.getenv("HF_MODEL_REPO_ID")
+            hf_token = os.getenv("HF_TOKEN")
+            
+            if not Path(model_path).exists() or not Path(scaler_path).exists():
+                if hf_repo_id:
+                    logger.info(f"Artefacts introuvables localement. Téléchargement depuis Hugging Face ({hf_repo_id})...")
+                    from huggingface_hub import hf_hub_download
+                    
+                    if not Path(model_path).exists():
+                        logger.info("-> Téléchargement du modèle...")
+                        model_path = hf_hub_download(repo_id=hf_repo_id, filename=Path(model_path).name, token=hf_token, local_dir=Path(model_path).parent)
+                        
+                    if not Path(scaler_path).exists():
+                        logger.info("-> Téléchargement du scaler...")
+                        scaler_path = hf_hub_download(repo_id=hf_repo_id, filename=Path(scaler_path).name, token=hf_token, local_dir=Path(scaler_path).parent)
+                else:
+                    raise FileNotFoundError("Artefacts manquants localement et 'HF_MODEL_REPO_ID' non défini dans .env.")
+
             self.model = joblib.load(model_path)
             self.scaler = joblib.load(scaler_path)
             logger.info(f"✅ Modèle et Scaler chargés avec succès depuis {Path(model_path).parent}.")
-        except FileNotFoundError as e:
-            logger.error(f"Fichier artefact manquant.\nErreur: {e}")
-            raise RuntimeError(f"Fichier artefact manquant.\nErreur: {e}")
+        except Exception as e:
+            logger.error(f"Erreur de chargement des artefacts : {e}")
+            raise RuntimeError(f"Erreur de chargement des artefacts : {e}")
 
         # -------------------------------------------------------------------#
         # ------------------- Pipeline de suppression -----------------------#
