@@ -91,26 +91,24 @@ Les deux techniques de texture que nous utiliseront : <br>
 
 # Ajustement des classes
 
-*La carte (la colonne Map) que nous venons de charger contient des classes décrivant le type de surface terrestre pour chaque point.*
+Voici un tableau récapitulatif des 11 classes de couverture terrestre disponibles dans le produit ESA WorldCover v200 (2021),<br> qui propose une cartographie mondiale à une résolution de 10 mètres. Ces classes permettent de distinguer différents types de surfaces terrestres, allant des forêts et zones agricoles aux zones urbaines et plans d'eau.
 
-Voici un tableau récapitulatif des 11 classes de couverture terrestre disponibles dans le produit ESA WorldCover v200 (2021),<br> qui propose une cartographie mondiale à une résolution de 10 mètres. Ces classes permettent de distinguer différents types de surfaces terrestres,<br> allant des forêts et zones agricoles aux zones urbaines et plans d'eau.
-
-| Code | Classe                    | Description                       | Couleur HEX |
-|------|---------------------------|-----------------------------------|-------------|
-| 10   | Tree cover                | Forêts, plantations boisées       | #006400    |
-| 20   | Shrubland                 | Buissons, maquis, landes          | #FFBB22     |
-| 30   | Grassland                 | Prairies, savanes, pâturages      | #FFFF4C     |
-| 40   | Cropland                  | Cultures agricoles                | #F096FF     |
-| 50   | Built-up area             | Zones urbaines, constructions     | #FA0000     |
-| 60   | Bare/sparse vegetation    | Sols nus, végétation clairsemée   | #B4B4B4     |
-| 70   | Snow and ice              | Neige et glace                    | #F0F0F0     |
-| 80   | Permanent water bodies    | Lacs, rivières, océans            | #0064C8     |
-| 90   | Herbaceous wetland        | Zones humides herbacées           | #0096A0     |
-| 95   | Mangroves                 | Forêts de mangrove                | #00CF75     |
-| 100  | Moss and lichen           | Mousses et lichens                | #FAE6A0     |
+| Code | Classe                    | Description                       |
+|------|---------------------------|-----------------------------------|
+| 10   | Tree cover                | Forêts, plantations boisées       |
+| 20   | Shrubland                 | Buissons, maquis, landes          |
+| 30   | Grassland                 | Prairies, savanes, pâturages      |
+| 40   | Cropland                  | Cultures agricoles                |
+| 50   | Built-up area             | Zones urbaines, constructions     |
+| 60   | Bare/sparse vegetation    | Sols nus, végétation clairsemée   |
+| 70   | Snow and ice              | Neige et glace                    |
+| 80   | Permanent water bodies    | Lacs, rivières, océans            |
+| 90   | Herbaceous wetland        | Zones humides herbacées           |
+| 95   | Mangroves                 | Forêts de mangrove                |
+| 100  | Moss and lichen           | Mousses et lichens                |
 
 
-*Mais pour notre travail, nous ne voulons avoir que sept classes :*
+*Mais pour notre travail, nous voulons le moins de classe possible sans altérer considérablement la réalité togolaise. <br> Nous répartissons donc les classes comme ceci :*
 
 | Code | Classe                  | Description|
 |--|--|--|
@@ -137,7 +135,7 @@ D'où nous faisons cet ajustement :
 | 70, 90, 95, 100   |-1           |
 
 
-puis retirons les -1
+puis retirons les -1 *(elles ne sont pas pertinentes pour nous vue le climat et la nature des sols au Togo)*
 
 
 <br><br>

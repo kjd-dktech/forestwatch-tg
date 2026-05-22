@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Copyright (c) 2025-2026 DKTech Innovations.
+# Licensed under the CC-BY-NC-4.0 License. See LICENSE file in the project root.
+#
+# Project: ForestWatch Togo - Land Cover & Deforestation AI Monitor
+# Maintainer: Kodjo Jean DEGBEVI (@kjd-dktech)
+# -----------------------------------------------------------------------------
+
 import ee
 
 PROJECT_ID = 'forestwatch-tg'

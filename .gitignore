@@ -8,6 +8,7 @@ __pycache__/
 
 data/
 models
+notebooks/v1.ipynb
 InitialProcess.md
 
 docker-compose.yml

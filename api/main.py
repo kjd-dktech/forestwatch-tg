@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
-# Copyright (c) 2025-2026 Kodjo Jean DEGBEVI. All rights reserved.
+# Copyright (c) 2025-2026 DKTech Innovations.
 # Licensed under the CC-BY-NC-4.0 License. See LICENSE file in the project root.
 #
 # Project: ForestWatch Togo - Land Cover & Deforestation AI Monitor
-# Author: Kodjo Jean DEGBEVI (@kjd-dktech)
+# Maintainer: Kodjo Jean DEGBEVI (@kjd-dktech)
 # -----------------------------------------------------------------------------
 
 import sys

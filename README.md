@@ -2,7 +2,7 @@
 
 Un système d'intelligence artificielle analysant les images satellites multispectrales (Sentinel-2) via Google Earth Engine pour classifier l'occupation des sols et surveiller l'évolution du couvert forestier au Togo. Pensez de l'extraction des données (Data Engineering) jusqu'au déploiement du modèle (AI Engineering), en passant par l'analyse géospatiale (Data Analysis).
 
-**Dataset constitué** : [Lien vers Google Drive](https://drive.google.com/file/d/1q_eiRnCmQ5TSvsFPq1zPfdpX3ipYQkkC/view?usp=sharing)
+**Dataset constitué** : [Lien vers Google Drive](https://drive.google.com/file/d/1FRDo60G5HjQ6p7_OHMpsksNS_fKdREzR/view?usp=drive_link)
 
 ---
 
@@ -35,7 +35,7 @@ Le modèle optimal obtenu assure le meilleur équilibre Précision/Rappel pour n
 ## 3. MLOps & API Engineering (Production)
 Le pipeline d'inférence a été industrialisé, sécurisé et conteneurisé.
 - **Backend REST** : Microservice propulsé par **FastAPI** & **Uvicorn**.
-- **Artifact Decoupling (Hugging Face)** : L'espace de travail est *stateless*. Si les poids (`.joblib`) sont absents localement, le kernel d'inférence récupère dynamiquement les artefacts de production depuis le Hub Hugging Face (via [`huggingface_hub`](https://huggingface.co/kjd-dktech/forestwatch-tg)).
+- **Artifact Decoupling (Hugging Face)** : L'espace de travail est *stateless*. Si les poids (`.joblib`) sont absents localement, le kernel d'inférence récupère dynamiquement les artefacts de production depuis [Hub Hugging Face](https://huggingface.co/kjd-dktech/forestwatch-tg) (via `huggingface_hub`).
 - **Sécurité & Guardrails** : Endpoints protégés par `X-API-Key`. Payload limités à 50MB. Validation stricte des features (calcul à la volée des indices spectraux si les bandes brutes sont fournies et rejet automatique des inputs invalides).
 - **Conteneurisation (Docker Hub)** : L'API est packagée et distribuée sous la forme d'une image cloud-native allégée ([`kjddktech/forestwatchtg-api:latest`](https://hub.docker.com/r/kjddktech/forestwatchtg-api:latest)).
 
@@ -68,25 +68,31 @@ L'API bootera sur le port `8000`.
 
 Pour les développeurs et curieux qui souhaitent explorer le repository :
 
-- 📁 **[`api/`](./api/)** : Couche serveur (Routing HTTP).
-  - 📄 [`main.py`](./api/main.py) : Définition de l'application FastAPI, sécurité (`X-API-Key`), parsing GeoJSON et limites d'upload.
-- 📁 **[`src/`](./src/)** : Moteur d'inférence ML.
-  - 📄 [`predict.py`](./src/predict.py) : Classe `LandCoverPredictor`. Gère le singleton du modèle, la validation, et le pull dynamique Hugging Face.
-  - 📄 [`earth_engine_formulas.py`](./src/earth_engine_formulas.py) : Fonctions de calcul géospatial à la volée (NDVI, NDWI...) et guardrails GLCM.
-- 📁 **[`notebooks/`](./notebooks/)** : Historique Data Science (R&D).
-  - 📄 [`data_collection.ipynb`](./notebooks/data_collection.ipynb) : Logique d'extraction via Google Earth Engine.
-  - 📄 [`collection_processing.ipynb`](./notebooks/collection_processing.ipynb) : Traitement de la collecte et création finale du dataset CSV.
-  - 📄 [`modeling.ipynb`](./notebooks/modeling.ipynb) : Phase d'EDA, Feature Engineering et GridSearch.
-  - 📄 [`model_export_pipeline.ipynb`](./notebooks/model_export_pipeline.ipynb) : Pipeline pur (Clean Build) générant les artefacts de production.
-- ⚙️ **Infrastructure & Ops** :
-  - 📄 [`Dockerfile`](./Dockerfile) & 📄 [`docker-compose.prod.yml`](./docker-compose.prod.yml) : Fichiers de conteneurisation.
-  - 📄 [`requirements-prod.txt`](./requirements-prod.txt) : Dépendances allégées pour l'environnement d'exécution de l'API.
-- 📜 **Gouvernance & Open Source** :
-  - 📄 [`LICENSE`](./LICENSE) : Définition des droits d'utilisation (CC-BY-NC-4.0).
-  - 📄 [`CONTRIBUTING.md`](./CONTRIBUTING.md) : Guide d'apport de contributions et standards du repository.
-  - 📄 [`CITATION.cff`](./CITATION.cff) : Métadonnées standardisées pour la citation du projet en recherche.
+- **[`api/`](./api/)** : Couche serveur (Routing HTTP).
+  - [`main.py`](./api/main.py) : Définition de l'application FastAPI, sécurité (`X-API-Key`), parsing GeoJSON et limites d'upload.
+- **[`src/`](./src/)** : Moteur d'inférence ML.
+  - [`predict.py`](./src/predict.py) : Classe `LandCoverPredictor`. Gère le singleton du modèle, la validation, et le pull dynamique Hugging Face.
+  - [`earth_engine_formulas.py`](./src/earth_engine_formulas.py) : Fonctions de calcul géospatial à la volée (NDVI, NDWI...) et guardrails GLCM.
+- **[`notebooks/`](./notebooks/)** : Historique Data Science.
+  - [`data_collection.ipynb`](./notebooks/data_collection.ipynb) : Logique d'extraction via Google Earth Engine.
+  - [`collection_processing.ipynb`](./notebooks/collection_processing.ipynb) : Traitement de la collecte et création finale du dataset CSV.
+  - [`modeling.ipynb`](./notebooks/modeling.ipynb) : Phase d'EDA, Feature Engineering et GridSearch.
+  - [`model_export_pipeline.ipynb`](./notebooks/model_export_pipeline.ipynb) : Pipeline pur (Clean Build) générant les artefacts de production.
+- **Infrastructure & Ops** :
+  - [`Dockerfile`](./Dockerfile) & [`docker-compose.prod.yml`](./docker-compose.prod.yml) : Fichiers de conteneurisation.
+  - [`requirements-prod.txt`](./requirements-prod.txt) : Dépendances allégées pour l'environnement d'exécution de l'API.
+- **Gouvernance & Open Source** :
+  - [`LICENSE`](./LICENSE) : Définition des droits d'utilisation (CC-BY-NC-4.0).
+  - [`CONTRIBUTING.md`](./CONTRIBUTING.md) : Guide d'apport de contributions et standards du repository.
+  - [`CITATION.cff`](./CITATION.cff) : Métadonnées standardisées pour la citation du projet en recherche.
 
 ---
 
 ## 🔜 Prochaines étapes
 * **Interface Web (Démo / UI)** : Création d’un front-end interactif (Dashboard) interfaçant l'API pour permettre un upload utilisateur simplifié, et la projection visuelle des cartes prédictives spatiales.
+
+---
+---
+
+
+<br>[Kodjo Jean DEGBEVI](mayal.tech) — DKTech Innovations
