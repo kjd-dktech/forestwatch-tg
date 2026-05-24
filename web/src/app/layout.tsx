@@ -25,12 +25,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen w-screen overflow-hidden`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen w-screen overflow-hidden transition-colors duration-500 ease-in-out`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
-          disableTransitionOnChange
         >
           {children}
         </ThemeProvider>
