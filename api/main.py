@@ -6,22 +6,17 @@
 # Maintainer: Kodjo Jean DEGBEVI (@kjd-dktech)
 # -----------------------------------------------------------------------------
 
-import sys
-import os
+import os, sys, base64, json, tempfile, io, logging, ee
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Security, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Security, Depends, Request
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import pandas as pd
 import numpy as np
-import io
-import logging
 from logging.handlers import RotatingFileHandler
-import json
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-import ee
 
 load_dotenv()
 GEE_PROJECT_NAME = os.getenv("GEE_PROJECT_NAME", "forestwatch-tg")
@@ -61,21 +56,30 @@ except Exception as e:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🎬 Initialisation de Google Earth Engine...")
-    service_account = os.getenv("GEE_SERVICE_ACCOUNT")
-    key_path = os.getenv("GEE_KEY_FILE_PATH")
-
+    app.state.gee_ready = False
     try:
-        if service_account and key_path and os.path.exists(key_path):
-            # Via Service Account
+        # Via Service Account
+        service_account = os.getenv("GEE_SERVICE_ACCOUNT")
+        temp_dir = os.getenv("GEE_KEY_FILE_DIR", "/tmp")
+        os.makedirs(temp_dir, exist_ok=True)
+        key_b64 = os.getenv("GEE_KEY_FILE_B64", "")
+        if service_account and key_b64 :
             logger.info("🔐 Utilisation du Service Account pour GEE...")
-            credentials = ee.ServiceAccountCredentials(service_account, key_path)
-            ee.Initialize(credentials=credentials, project=GEE_PROJECT_NAME)
+            with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", dir=temp_dir, delete=True) as tmp:
+                tmp.write(base64.b64decode(key_b64))
+                tmp.flush()
+                credentials = ee.ServiceAccountCredentials(service_account, tmp.name)
+                ee.Initialize(credentials=credentials, project=GEE_PROJECT_NAME)
+            del key_b64
+            app.state.gee_ready = True
+        
+        # Connexion via token GEE (doit avoir été déjà configuré)
         else:
-            # Connexion via token GEE (doit avoir été déjà configuré)
             logger.info("💻 Utilisation du token GEE local (mode développeur)...")
             ee.Initialize(project=GEE_PROJECT_NAME)
-            
-        logger.info(f"✅ GEE Initialisé (avec le projet {GEE_PROJECT_NAME})")
+            app.state.gee_ready = True
+        
+        if app.state.gee_ready : logger.info(f"✅ GEE Initialisé (avec le projet {GEE_PROJECT_NAME})")
     except Exception as e:
         logger.error(f"❌ Impossible d'initialiser GEE : {e}")
 
@@ -112,11 +116,12 @@ def verify_api_key(api_key: str = Security(api_key_header)):
 
 
 @app.get("/")
-def read_root():
+def read_root(request: Request):
     return {
         "status": "online", 
         "message": "Bienvenue sur l'API ForestWatch Togo",
-        "model_loaded": predictor is not None
+        "model_loaded": predictor is not None,
+        "gee_ready": getattr(request.app.state, "gee_ready", False)
     }
 
 @app.post("/predict/file/")
@@ -192,7 +197,7 @@ async def predict_file(file: UploadFile = File(...), api_key: str = Depends(veri
 
 
 @app.post("/predict/pixel/")
-def predict_pixel(data: Dict[str, Any] = Body(...), api_key: str = Depends(verify_api_key)):
+def predict_pixel(request: Request, data: Dict[str, Any] = Body(...), api_key: str = Depends(verify_api_key)):
     """
     Endpoint acceptant un objet JSON représentant un seul point (pixel) Sentinel-2.
     """
@@ -208,6 +213,10 @@ def predict_pixel(data: Dict[str, Any] = Body(...), api_key: str = Depends(verif
         is_coord_only = len(data) <= 4 and 'latitude' in data and 'longitude' in data
         
         if is_coord_only:
+            if not getattr(request.app.state, "gee_ready", False):
+                logger.error("Tentative d'extraction spatiale mais Google Earth Engine n'est pas initialisé.")
+                raise HTTPException(status_code=503, detail="Le service Google Earth Engine n'est pas disponible. Impossible d'extraire les signaux satellitaires.")
+                
             lat = data['latitude']
             lng = data['longitude']
             year = data.get('year', '2025')
