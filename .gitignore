@@ -5,6 +5,7 @@ __pycache__/
 
 .env
 .python-version
+gc_tools/
 
 data/
 models
