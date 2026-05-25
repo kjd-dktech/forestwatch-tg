@@ -5,12 +5,11 @@ __pycache__/
 
 .env
 .python-version
-logs/
 
 data/
 models
-web/
 notebooks/v1.ipynb
 InitialProcess.md
 
 docker-compose.yml
+logs/
