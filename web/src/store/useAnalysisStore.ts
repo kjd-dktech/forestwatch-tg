@@ -29,6 +29,10 @@ interface AnalysisState {
     lng: number | null;
   };
 
+  // État pour le batch upload
+  batchPredictions: any[];
+  isBatchLoading: boolean;
+
   toggleSidebar: () => void;
   toggleLayer: (layer: keyof AnalysisState['layers']) => void;
   setDate: (date: string) => void;
@@ -37,6 +41,9 @@ interface AnalysisState {
   // Actions pour l'interaction utilisateur
   setPixelInteraction: (data: Partial<AnalysisState['pixelInteraction']>) => void;
   clearPixelInteraction: () => void;
+
+  setBatchPredictions: (predictions: any[]) => void;
+  setIsBatchLoading: (isLoading: boolean) => void;
 }
 
 export const useAnalysisStore = create<AnalysisState>()(
@@ -59,6 +66,8 @@ export const useAnalysisStore = create<AnalysisState>()(
         lat: null,
         lng: null,
       },
+      batchPredictions: [],
+      isBatchLoading: false,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       toggleLayer: (layer) =>
         set((state) => ({
@@ -72,6 +81,8 @@ export const useAnalysisStore = create<AnalysisState>()(
         set((state) => ({
           pixelInteraction: { isLoading: false, error: null, data: null, lat: null, lng: null },
         })),
+      setBatchPredictions: (predictions) => set({ batchPredictions: predictions }),
+      setIsBatchLoading: (isLoading) => set({ isBatchLoading: isLoading }),
     }),
     {
       name: 'forestwatch-ui-storage',

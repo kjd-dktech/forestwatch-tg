@@ -1,19 +1,45 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
-import { Layers, Calendar, BarChart3, Settings2, ChevronLeft, Menu } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Layers, Calendar, BarChart3, Settings2, ChevronLeft, Menu, UploadCloud, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAnalysisStore } from '@/store/useAnalysisStore';
+import { api } from '@/lib/api';
 
 export default function Sidebar() {
-  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar } = useAnalysisStore();
+  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setBatchPredictions, setIsBatchLoading, isBatchLoading } = useAnalysisStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Utilisation d'un state local monté pour éviter les erreurs d'hydratation (Next.js vs Zustand persist)
   const [isMounted, setIsMounted] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   useEffect(() => setIsMounted(true), []);
 
   if (!isMounted) return null;
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadError(null);
+    setIsBatchLoading(true);
+
+    try {
+      // Appel à l'API FastApi (predictFile attend un CSV uploadé avec les 18 features)
+      const data = await api.predictFile(file);
+
+      setBatchPredictions(data.predictions);
+      
+    } catch (err: any) {
+      setUploadError(err.message || "Erreur lors de l'envoi du fichier.");
+    } finally {
+      setIsBatchLoading(false);
+      // reset l'input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div>
@@ -77,6 +103,42 @@ export default function Sidebar() {
                     />
                     </div>
                 </div>
+                </section>
+
+                {/* Section Batch Upload */}
+                <section className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <UploadCloud className="w-5 h-5 text-emerald-500" />
+                      <h2>Traitement Spatial (Batch)</h2>
+                  </div>
+                  <div className="bg-muted/40 border border-dashed border-border/60 hover:border-emerald-500/50 transition-colors rounded-xl p-4 text-center cursor-pointer relative"
+                       onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input 
+                      type="file" 
+                      accept=".csv,.json,.geojson,.xlsx,.xls,.zip,.kml,.gpkg" 
+                      className="hidden" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                    />
+                    
+                    {isBatchLoading ? (
+                      <div className="flex flex-col items-center gap-2 text-emerald-600 py-2">
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <span className="text-xs font-semibold">Analyse ML en cours...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1.5 py-2">
+                         <span className="text-sm font-medium text-foreground">Cliquez ou déposez</span>
+                         <span className="text-xs text-muted-foreground">CSV, GeoJSON, Excel, Shapefile (Zip)</span>
+                      </div>
+                    )}
+                  </div>
+                  {uploadError && (
+                    <div className="text-xs text-red-500 text-center font-medium bg-red-500/10 py-1.5 rounded-md">
+                      {uploadError}
+                    </div>
+                  )}
                 </section>
 
                 {/* Section 2 : Période Temporelle */}
