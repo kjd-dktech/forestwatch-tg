@@ -5,7 +5,7 @@ __pycache__/
 
 .env
 .python-version
-logs/
+gc_tools/
 
 data/
 models
@@ -14,3 +14,4 @@ notebooks/v1.ipynb
 InitialProcess.md
 
 docker-compose.yml
+logs/

@@ -61,16 +61,24 @@ except Exception as e:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🎬 Initialisation de Google Earth Engine...")
+    service_account = os.getenv("GEE_SERVICE_ACCOUNT")
+    key_path = os.getenv("GEE_KEY_FILE_PATH")
+
     try:
-        ee.Initialize(project=GEE_PROJECT_NAME)
+        if service_account and key_path and os.path.exists(key_path):
+            # Via Service Account
+            logger.info("🔐 Utilisation du Service Account pour GEE...")
+            credentials = ee.ServiceAccountCredentials(service_account, key_path)
+            ee.Initialize(credentials=credentials, project=GEE_PROJECT_NAME)
+        else:
+            # Connexion via token GEE (doit avoir été déjà configuré)
+            logger.info("💻 Utilisation du token GEE local (mode développeur)...")
+            ee.Initialize(project=GEE_PROJECT_NAME)
+            
         logger.info(f"✅ GEE Initialisé (avec le projet {GEE_PROJECT_NAME})")
     except Exception as e:
-        logger.warning(f"⚠️ Échec de l'init via projet, tentative par défaut : {e}")
-        try:
-            ee.Initialize()
-            logger.info("✅ GEE Initialisé (par défaut)")
-        except Exception as e2:
-            logger.error(f"❌ Impossible d'initialiser GEE : {e2}")
+        logger.error(f"❌ Impossible d'initialiser GEE : {e}")
+
     yield
     logger.info("🛑 Arrêt de l'API")
 
