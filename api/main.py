@@ -19,9 +19,12 @@ import io
 import logging
 from logging.handlers import RotatingFileHandler
 import json
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+import ee
 
 load_dotenv()
+GEE_PROJECT_NAME = os.getenv("GEE_PROJECT_NAME", "forestwatch-tg")
 API_KEY = os.getenv("API_KEY", "not_set")
 
 CURRENT_FILE_DIR = Path(__file__).resolve().parent
@@ -45,19 +48,39 @@ if str(REPO_ROOT) not in sys.path:
 
 try:
     from src.predict import LandCoverPredictor
+    from src.gee_memory import extract_point_features
     predictor = LandCoverPredictor()
     EXPECTED_FEATURES = predictor.expected_features.tolist()
 except Exception as e:
-    logger.error(f"❌ Erreur CRITIQUE d'import du Predictor : {e}")
+    logger.error(f"❌ Erreur CRITIQUE d'import : {e}")
     predictor = None
+    extract_point_features = None
     EXPECTED_FEATURES = []
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("🎬 Initialisation de Google Earth Engine...")
+    try:
+        ee.Initialize(project=GEE_PROJECT_NAME)
+        logger.info(f"✅ GEE Initialisé (avec le projet {GEE_PROJECT_NAME})")
+    except Exception as e:
+        logger.warning(f"⚠️ Échec de l'init via projet, tentative par défaut : {e}")
+        try:
+            ee.Initialize()
+            logger.info("✅ GEE Initialisé (par défaut)")
+        except Exception as e2:
+            logger.error(f"❌ Impossible d'initialiser GEE : {e2}")
+    yield
+    logger.info("🛑 Arrêt de l'API")
 
 app = FastAPI(
     title="ForestWatch Togo API",
     description="API de prédiction de classification d'occupation des sols et déforestation",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
+
 
 origins = [
     "*",
@@ -172,6 +195,27 @@ def predict_pixel(data: Dict[str, Any] = Body(...), api_key: str = Depends(verif
     try:
         if not data:
              raise ValueError("Le corps de la requête JSON est vide.")
+             
+        # Si la requête contient uniquement les coordonnées, on déclenche l'extraction GEE
+        is_coord_only = len(data) <= 4 and 'latitude' in data and 'longitude' in data
+        
+        if is_coord_only:
+            lat = data['latitude']
+            lng = data['longitude']
+            year = data.get('year', '2025')
+            
+            logger.info(f"⏳ Interrogation de Google Earth Engine pour le pixel [{lat}, {lng}]...")
+            try:
+                gee_data = extract_point_features(lat, lng, year)
+                if gee_data is None:
+                    raise ValueError("Aucune donnée satellitaire S2 disponible pour ce point (nuages persistants, océan profond ou hors-zone).")
+                
+                # Fusionner les features GEE extraites dans l'objet "data" principal
+                data.update(gee_data)
+                logger.info(f"✅ Features GEE extraites : {len(gee_data.keys())} propriétés spatio-temporelles.")
+            except Exception as gee_err:
+                logger.error(f"Erreur d'extraction de GEE : {gee_err}", exc_info=True)
+                raise HTTPException(status_code=502, detail=f"Échec de l'extraction des signaux spatiaux (Google Earth Engine) : {str(gee_err)}")
              
         df_pixel = pd.DataFrame([data])
         results_df = predictor.predict(df_pixel)
