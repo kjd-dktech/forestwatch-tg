@@ -10,6 +10,8 @@ import { getLabelColorRgb, getLabelColorHex } from '@/lib/constants';
 import Legend from './Legend';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
+import { HexagonLayer } from '@deck.gl/aggregation-layers';
+import { MVTLayer } from '@deck.gl/geo-layers';
 import { api } from '@/lib/api';
 import { Loader2, AlertCircle, X } from 'lucide-react';
 
@@ -23,7 +25,7 @@ function DeckGLOverlay(props: any) {
 
 export default function BaseMap() {
   const { viewState, setViewState } = useMapStore();
-  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions } = useAnalysisStore();
+  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions, batchJobId, datavizMode } = useAnalysisStore();
   const { resolvedTheme } = useTheme();
   const [isDragging, setIsDragging] = React.useState(false);
 
@@ -35,7 +37,6 @@ export default function BaseMap() {
 
   // Clic natif sur la Map
   const handleMapClick = useCallback(async (e: any) => {
-    // Si nous ne sommes pas sur la définition des coordonnées (ex: click control)
     if (!e.lngLat) return;
 
     const { lng, lat } = e.lngLat;
@@ -50,7 +51,7 @@ export default function BaseMap() {
     });
 
     try {
-      // --- simulation d'une requête API ---
+      // Requête API pour extraction GEE + prédiction IA
       const response = await api.predictPixel({
           latitude: lat,
           longitude: lng,
@@ -82,22 +83,73 @@ export default function BaseMap() {
 
   // Les calques deck.gl
   const layers = useMemo(() => {
-    return [
-      batchPredictions.length > 0 && new ScatterplotLayer({
-        id: 'batch-predictions-layer',
-        data: batchPredictions,
-        pickable: true,
-        opacity: 0.8,
-        stroked: false,
-        filled: true,
-        radiusScale: 10, // Agrandir selon le zoom pour que le pixel soit visible
-        radiusMinPixels: 3,
-        radiusMaxPixels: 100,
-        getPosition: (d: any) => [d.longitude, d.latitude],
-        getFillColor: (d: any) => getLabelColorRgb(d.prediction_label || String(d.prediction) || ''),
-      })
-    ].filter(Boolean); // Enlève false si batch vide
-  }, [batchPredictions]);
+    const list = [];
+    
+    // Scatterplot ou hexagon si on a un batch
+    if (batchPredictions.length > 0) {
+      if (datavizMode === 'scatterplot') {
+        list.push(
+          new ScatterplotLayer({
+            id: 'batch-scatterplot-layer',
+            data: batchPredictions,
+            pickable: true,
+            opacity: 0.8,
+            stroked: false,
+            filled: true,
+            radiusScale: 10,
+            radiusMinPixels: 3,
+            radiusMaxPixels: 100,
+            getPosition: (d: any) => [d.longitude, d.latitude],
+            getFillColor: (d: any) => getLabelColorRgb(d.prediction_label || String(d.prediction) || ''),
+          })
+        );
+      } else if (datavizMode === 'hexagon') {
+        list.push(
+          new HexagonLayer({
+            id: 'batch-hexagon-layer',
+            data: batchPredictions,
+            pickable: true,
+            extruded: true, // rendu 3D
+            radius: 200,    // taille des hexagones en mètres
+            elevationScale: 4,
+            getPosition: (d: any) => [d.longitude, d.latitude],
+            getColorWeight: (point: any) => {
+               // Pour simplifier l'assignation de couleur, on peut juste récupérer la couleur du premier point
+               // /****TODO****/: changer cette stratégie en majorité, moyennz ou ratio de couleurs (blended) pour les hexagones contenant plusieurs points de classes différentes
+               return point.prediction_label ? getLabelColorRgb(point.prediction_label)[0] : 0;
+            },
+            colorRange: [
+              [0, 128, 0],   // Forêt
+              [255, 215, 0], // Savane
+              [255, 140, 0], // Culture
+              [211, 211, 211], // Urbain
+              [160, 82, 45], // Sol Nu
+              [0, 0, 255]    // Eau
+            ],
+          })
+        );
+      }
+    }
+    
+    // Si on a un job_id coté backend, on peut mapper la layer MVT
+    if (batchJobId && datavizMode === 'mvt') {
+      const MVT_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      list.push(
+        new MVTLayer({
+          id: 'batch-mvt-layer',
+          data: `${MVT_URL}/predict/tile/${batchJobId}/{z}/{x}/{y}.pbf`,
+          minZoom: 0,
+          maxZoom: 23,
+          getLineColor: [192, 192, 192, 255],
+          getFillColor: (d: any) => getLabelColorRgb(d?.properties?.prediction_label || ''),
+          lineWidthMinPixels: 0,
+          pickable: true,
+        })
+      );
+    }
+
+    return list;
+  }, [batchPredictions, batchJobId, datavizMode]);
 
   return (
     <div className="absolute inset-0 h-screen w-screen overflow-hidden">
@@ -189,7 +241,7 @@ export default function BaseMap() {
                        </div>
                      )}
                      <div className="mt-2 text-[10px] text-gray-500 text-right italic">
-                        via RandomForest (6 classes)
+                        Powered by GEE & ForestWatch AI
                      </div>
                   </div>
                 )}
