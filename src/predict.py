@@ -69,25 +69,25 @@ class LandCoverPredictor:
             
             if not Path(model_path).exists() or not Path(scaler_path).exists():
                 if hf_repo_id:
-                    logger.info(f"Artefacts introuvables localement. Téléchargement depuis Hugging Face ({hf_repo_id})...")
+                    logger.info(f"[INFO] - Artefacts introuvables localement. Téléchargement depuis Hugging Face ({hf_repo_id})...")
                     from huggingface_hub import hf_hub_download
                     
                     if not Path(model_path).exists():
-                        logger.info("-> Téléchargement du modèle...")
+                        logger.info("[INFO] - Téléchargement du modèle...")
                         model_path = hf_hub_download(repo_id=hf_repo_id, filename=Path(model_path).name, token=hf_token, local_dir=Path(model_path).parent)
                         
                     if not Path(scaler_path).exists():
-                        logger.info("-> Téléchargement du scaler...")
+                        logger.info("[INFO] - Téléchargement du scaler...")
                         scaler_path = hf_hub_download(repo_id=hf_repo_id, filename=Path(scaler_path).name, token=hf_token, local_dir=Path(scaler_path).parent)
                 else:
-                    raise FileNotFoundError("Artefacts manquants localement et 'HF_MODEL_REPO_ID' non défini dans .env.")
+                    raise FileNotFoundError(" Artefacts manquants localement et 'HF_MODEL_REPO_ID' non défini dans .env.")
 
             self.model = joblib.load(model_path)
             self.scaler = joblib.load(scaler_path)
-            logger.info(f"✅ Modèle et Scaler chargés avec succès depuis {Path(model_path).parent}.")
+            logger.info(f"[INFO] - ✅ Modèle et Scaler chargés avec succès depuis {Path(model_path).parent}.")
         except Exception as e:
-            logger.error(f"Erreur de chargement des artefacts : {e}")
-            raise RuntimeError(f"Erreur de chargement des artefacts : {e}")
+            logger.error(f"[ERROR] - ❌ Erreur de chargement des artefacts : {e}")
+            raise RuntimeError(f"[ERROR] - ❌ Erreur de chargement des artefacts : {e}")
 
         cols_to_drop_sys = ['system:index', '.geo', 'longitude', 'latitude', 'landcover']
         
@@ -112,26 +112,28 @@ class LandCoverPredictor:
 
         indices_spectraux = ['NDVI', 'NDWI', 'NDBI']
         if any(idx not in df_clean.columns for idx in indices_spectraux):
-            logger.info("Indices spectraux manquants. Tentative de calcul dynamique via les bandes brutes.")
+            logger.info("[INFO] - Indices spectraux manquants. Tentative de calcul dynamique via les bandes brutes.")
             try:
                 df_clean = calculate_indices(df_clean)
-                logger.info("✅ Indices spectraux calculés avec succès.")
+                logger.info("[INFO] - Indices spectraux calculés avec succès.")
             except ValueError as e:
-                logger.warning(f"Impossible de calculer les indices dynamiquement : {e}")
+                logger.warning(f"[WARNING] - Impossible de calculer les indices dynamiquement : {e}")
 
         is_valid, msg = has_minimum_glcm_features(df_clean, self.expected_features)
         if not is_valid:
-            logger.error(f"Rejet : {msg}")
+            logger.error(f"[ERROR] - Rejet : {msg}")
             raise ValueError(msg)
         
         missing_features = [f for f in self.expected_features if f not in df_clean.columns]
         if missing_features:
-            logger.error(f"Colonnes manquantes finales : {missing_features}")
-            raise ValueError(f"Colonnes manquantes dans les données fournies (après calculs) : {missing_features}")
+            logger.error(f"[ERROR] - ❌ Colonnes manquantes finales : {missing_features}")
+            raise ValueError(f"[ERROR] - ❌ Colonnes manquantes dans les données fournies (après calculs) : {missing_features}")
             
         df_clean = df_clean[self.expected_features]
         
         data_scaled = self.scaler.transform(df_clean)
+        
+        logger.info("[INFO] - ✅ Prétraitement terminé.")
         
         return data_scaled
 
@@ -143,12 +145,12 @@ class LandCoverPredictor:
         if isinstance(data, (str, Path)):
             data_path = Path(data)
             if not data_path.exists():
-                raise FileNotFoundError(f"Le fichier {data_path} est introuvable.")
+                raise FileNotFoundError(f"[ERROR] - ❌ Le fichier {data_path} est introuvable.")
             df = pd.read_csv(data_path)
         elif isinstance(data, pd.DataFrame):
             df = data.copy()
         else:
-            raise ValueError("L'entrée doit être un chemin vers un CSV (str, Path) ou un DataFrame Pandas.")
+            raise ValueError("[ERROR] - ❌ L'entrée doit être un chemin vers un CSV (str, Path) ou un DataFrame Pandas.")
 
         X_scaled = self.preprocess(df)
 
