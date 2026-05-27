@@ -16,7 +16,6 @@ import pandas as pd
 import numpy as np
 from shapely.geometry import Point
 import geopandas as gpd
-from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -26,31 +25,24 @@ API_KEY = os.getenv("API_KEY", "not_set")
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
 
 CURRENT_FILE_DIR = Path(__file__).resolve().parent
-REPO_ROOT = CURRENT_FILE_DIR.parent
-LOG_DIR = CURRENT_FILE_DIR / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-logger = logging.getLogger("API")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    fh = RotatingFileHandler(LOG_DIR / "api.log", maxBytes=5*1024*1024, backupCount=2)
-    fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-    logger.addHandler(fh)
-    
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-    logger.addHandler(ch)
+REPO_ROOT = CURRENT_FILE_DIR.parent.parent
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
 
+from backend.logging.logging_config import setup_logger
+logger = setup_logger("api", "main", "api.log")
+
+from backend.api.middleware import RequestIDMiddleware
+
 try:
-    from src.predict import LandCoverPredictor
+    from backend.core.predictor import LandCoverPredictor
     from src.gee_memory import extract_point_features
     predictor = LandCoverPredictor()
     EXPECTED_FEATURES = predictor.expected_features.tolist()
+
 except Exception as e:
-    logger.error(f"❌ Erreur CRITIQUE d'import : {e}")
+    logger.error(f"❌ Erreur d'import : {e}")
     predictor = None
     extract_point_features = None
     EXPECTED_FEATURES = []
@@ -62,7 +54,7 @@ async def lifespan(app: FastAPI):
     app.state.gee_ready = False
     app.state.jobs = {} # Stockage mémoire des prédictions
     try:
-        # Via Service Account
+        # Connexion via Service Account
         service_account = os.getenv("GEE_SERVICE_ACCOUNT")
         temp_dir = os.getenv("GEE_KEY_FILE_DIR", "/tmp")
         os.makedirs(temp_dir, exist_ok=True)
@@ -97,9 +89,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.add_middleware(RequestIDMiddleware)
 
 origins = [
-    "*",
+    "http://localhost:3000",
+    "https://symmetrical-umbrella-x5p9xw5qw7j7cv7gp-3000.app.github.dev/",
 ]
 
 app.add_middleware(
@@ -114,7 +108,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
 
 def verify_api_key(api_key: str = Security(api_key_header)):
     if api_key != API_KEY:
-        logger.warning(f"[WARNING] - Tentative de prédiction avec une clé API invalide.")
+        logger.warning(f"Tentative de prédiction avec une clé API invalide.")
         raise HTTPException(status_code=403, detail="Accès refusé : Clé API invalide.")
     return api_key
 
@@ -134,23 +128,23 @@ async def predict_file(request: Request, file: UploadFile = File(...), api_key: 
     Endpoint acceptant un fichier CSV, JSON, GeoJSON ou Excel (xlsx, xls).
     Retourne les prédictions d'occupation des sols.
     """
-    logger.info(f"[INFO] - Fichier reçu : {file.filename}")
+    logger.info(f"Fichier reçu : {file.filename}")
     
     max_file_size = MAX_FILE_SIZE_MB * 1024 * 1024
     
     if file.size and file.size > max_file_size:
-        logger.warning(f"[WARNING] - Rejet: Fichier trop volumineux ({file.size} bytes). Limite: {max_file_size} bytes.")
+        logger.warning(f"Rejet: Fichier trop volumineux ({file.size} bytes). Limite: {max_file_size} bytes.")
         raise HTTPException(status_code=413, detail=f"Payload Too Large: Le fichier dépasse la limite de {MAX_FILE_SIZE_MB} MB autorisée.")
 
     if not predictor:
-        logger.error("[ERROR] - Requête de prédiction mais modèle non chargé.")
+        logger.error("Requête de prédiction mais modèle non chargé.")
         raise HTTPException(status_code=503, detail="Modèle IA non chargé sur le serveur.")
 
     try:
         contents = await file.read()
         
         if len(contents) > max_file_size:
-            logger.warning(f"[WARNING] - Rejet post-lecture: Fichier trop volumineux ({len(contents)} bytes).")
+            logger.warning(f"Rejet post-lecture: Fichier trop volumineux ({len(contents)} bytes).")
             raise HTTPException(status_code=413, detail="Payload Too Large: Le fichier d'entrée dépasse la limite autorisée.")
             
         if file.filename.endswith('.csv'):
@@ -166,10 +160,10 @@ async def predict_file(request: Request, file: UploadFile = File(...), api_key: 
             else:
                 df = pd.DataFrame(data_json)
         else:
-            logger.warning(f"[WARNING] - Format non supporté: {file.filename}")
+            logger.warning(f"Format non supporté: {file.filename}")
             raise ValueError("Le fichier doit être au format .csv, .xls, .xlsx, .json ou .geojson")
             
-        logger.info(f"[INFO] - Données extraites : {df.shape[0]} lignes pour l'inférence.")
+        logger.info(f"Données extraites : {df.shape[0]} lignes pour l'inférence.")
         
         results_df = predictor.predict(df)
         
@@ -188,27 +182,32 @@ async def predict_file(request: Request, file: UploadFile = File(...), api_key: 
         filtered_df = results_df[columns_to_return].copy()
         
         # On s'assure que latitude/longitude est bien présent pour le MVT
-        if 'latitude' in filtered_df.columns and 'longitude' in filtered_df.columns:
+        is_mappable = 'latitude' in filtered_df.columns and 'longitude' in filtered_df.columns
+        if is_mappable:
             # Conversion vers GeoDataFrame pour mapbox/mercantile
             geometry = [Point(xy) for xy in zip(filtered_df.longitude, filtered_df.latitude)]
             gdf = gpd.GeoDataFrame(filtered_df, geometry=geometry, crs="EPSG:4326")
             request.app.state.jobs[job_id] = gdf
+        else:
+            # Stockage pour SWR n'ayant pas de layers MVT/H3
+            request.app.state.jobs[job_id] = filtered_df
             
         json_results = filtered_df.to_dict(orient="records")
         
-        logger.info(f"[INFO] -  ✅ Prédiction réussie pour {file.filename}. Job ID: {job_id}")
+        logger.info(f"✅ Prédiction réussie pour {file.filename}. Job ID: {job_id}")
         return {
             "job_id": job_id,
             "filename": file.filename,
             "rows_processed": len(results_df),
-            "predictions": json_results # TODO: En mode "Heavy Scale", on pourrait tronquer ceci pour ne pas faire crasher le frontend, et laisser DeckGL appeler MVT
+            "is_mappable": is_mappable,
+            "predictions": json_results
         }
         
     except ValueError as ve:
-        logger.error(f"[ERROR] - ❌ Erreur de validation des données : {ve}")
+        logger.error(f"❌ Erreur de validation des données : {ve}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.error(f"[ERROR] - ❌ Erreur inattendue : {e}", exc_info=True)
+        logger.error(f"❌ Erreur inattendue : {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction : {str(e)}")
 
 
@@ -217,7 +216,7 @@ def predict_pixel(request: Request, data: Dict[str, Any] = Body(...), api_key: s
     """
     Endpoint acceptant un objet JSON représentant un seul point (pixel) Sentinel-2.
     """
-    logger.info("[INFO] - Requête unitaire reçue pour un pixel.")
+    logger.info("Requête unitaire reçue pour un pixel.")
     if not predictor:
         raise HTTPException(status_code=503, detail="Modèle IA non chargé sur le serveur.")
         
@@ -230,14 +229,14 @@ def predict_pixel(request: Request, data: Dict[str, Any] = Body(...), api_key: s
         
         if is_coord_only:
             if not getattr(request.app.state, "gee_ready", False):
-                logger.error("[ERROR] - Tentative d'extraction spatiale mais Google Earth Engine n'est pas initialisé.")
+                logger.error("Tentative d'extraction spatiale mais Google Earth Engine n'est pas initialisé.")
                 raise HTTPException(status_code=503, detail="Le service Google Earth Engine n'est pas disponible. Impossible d'extraire les signaux satellitaires.")
                 
             lat = data['latitude']
             lng = data['longitude']
             year = data.get('year', '2025')
             
-            logger.info(f"[INFO] - Interrogation de Google Earth Engine pour le pixel [{lat}, {lng}]...")
+            logger.info(f"Interrogation de Google Earth Engine pour le pixel [{lat}, {lng}]...")
             try:
                 gee_data = extract_point_features(lat, lng, year)
                 if gee_data is None:
@@ -245,9 +244,9 @@ def predict_pixel(request: Request, data: Dict[str, Any] = Body(...), api_key: s
                 
                 # Fusionner les features GEE extraites dans l'objet "data" principal
                 data.update(gee_data)
-                logger.info(f"[INFO] - Features GEE extraites : {len(gee_data.keys())} propriétés spatio-temporelles.")
+                logger.info(f"Features GEE extraites : {len(gee_data.keys())} propriétés spatio-temporelles.")
             except Exception as gee_err:
-                logger.error(f"[ERROR] - Erreur d'extraction de GEE : {gee_err}", exc_info=True)
+                logger.error(f"Erreur d'extraction de GEE : {gee_err}", exc_info=True)
                 raise HTTPException(status_code=502, detail=f"Échec de l'extraction des signaux spatiaux (Google Earth Engine) : {str(gee_err)}")
              
         df_pixel = pd.DataFrame([data])
@@ -264,14 +263,14 @@ def predict_pixel(request: Request, data: Dict[str, Any] = Body(...), api_key: s
         if 'longitude' in df_pixel.columns and pd.notnull(df_pixel.iloc[0]['longitude']):
             result_dict['longitude'] = results_df.iloc[0]['longitude']
             
-        logger.info(f"[INFO] - ✅ Prédiction réussie : {result_dict['prediction_label']} ({result_dict['confidence_score']})")
+        logger.info(f"✅ Prédiction réussie : {result_dict['prediction_label']} ({result_dict['confidence_score']})")
         return result_dict
 
     except ValueError as ve:
-        logger.warning(f"[WARNING] - Erreur validation pixel : {ve}")
+        logger.warning(f"Erreur validation pixel : {ve}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.error(f"[ERROR] - ❌ Erreur inattendue pixel : {e}", exc_info=True)
+        logger.error(f"❌ Erreur inattendue pixel : {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne : {str(e)}")
 
 @app.get("/predict/tile/{job_id}/{z}/{x}/{y}.pbf")
@@ -314,7 +313,7 @@ async def get_mvt_tile(request: Request, job_id: str, z: int, x: int, y: int):
         )
         return Response(content=pbf_content, media_type="application/vnd.mapbox-vector-tile")
     except Exception as e:
-        logger.error(f"[ERROR] - Erreur d'encodage de la tile: {e}")
+        logger.error(f"Erreur d'encodage de la tile: {e}")
         return Response(content=b"", media_type="application/vnd.mapbox-vector-tile")
 
 @app.get("/predict/h3/{job_id}")
@@ -346,3 +345,36 @@ async def get_h3_aggregation(request: Request, job_id: str, resolution: int = 8)
     results = agg_df.to_dict(orient="records")
     return {"resolution": resolution, "hexagons": results}
 
+
+@app.get("/predict/job/{job_id}")
+async def get_job_results(request: Request, job_id: str):
+    """
+    Endpoint pour SWR : permet au frontend de récupérer les points bruts d'un job_id après rechargement.
+    """
+    jobs = getattr(request.app.state, "jobs", {})
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job ID introuvable ou expiré en mémoire cache du serveur.")
+        
+    df = jobs[job_id]
+    
+    # Check si c'est un GeoDataFrame pour extraire les colonnes (SWR aura besoin des mêmes infos)
+    results = []
+    if isinstance(df, gpd.GeoDataFrame):
+        for _, row in df.iterrows():
+            feat = {
+                "prediction_label": row.get("prediction_label", ""),
+                "confidence_score": float(row.get("confidence_score", 0.0)),
+                "longitude": row.geometry.x,
+                "latitude": row.geometry.y
+            }
+            results.append(feat)
+        is_mappable = True
+    else:
+        results = df.to_dict(orient="records")
+        is_mappable = False
+        
+    return {
+        "job_id": job_id,
+        "is_mappable": is_mappable,
+        "predictions": results
+    }
