@@ -14,6 +14,7 @@ export interface PredictPixelResponse {
 }
 
 export interface PredictFileResponse {
+  job_id: string;
   filename: string;
   rows_processed: number;
   predictions: PredictPixelResponse[];

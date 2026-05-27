@@ -8,7 +8,7 @@ import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { api } from '@/lib/api';
 
 export default function Sidebar() {
-  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setBatchPredictions, setIsBatchLoading, isBatchLoading } = useAnalysisStore();
+  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setBatchPredictions, setIsBatchLoading, isBatchLoading, datavizMode, setDatavizMode, batchJobId } = useAnalysisStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Utilisation d'un state local monté pour éviter les erreurs d'hydratation (Next.js vs Zustand persist)
@@ -27,10 +27,8 @@ export default function Sidebar() {
     setIsBatchLoading(true);
 
     try {
-      // Appel à l'API FastApi (predictFile attend un CSV uploadé avec les 18 features)
       const data = await api.predictFile(file);
-
-      setBatchPredictions(data.predictions);
+      setBatchPredictions(data.predictions, data.job_id);
       
     } catch (err: any) {
       setUploadError(err.message || "Erreur lors de l'envoi du fichier.");
@@ -137,6 +135,33 @@ export default function Sidebar() {
                   {uploadError && (
                     <div className="text-xs text-red-500 text-center font-medium bg-red-500/10 py-1.5 rounded-md">
                       {uploadError}
+                    </div>
+                  )}
+
+                  {/* Changer le rendu visuel si un batch est actif */}
+                  {batchJobId && (
+                    <div className="flex flex-col gap-2 mt-4 animate-in fade-in zoom-in duration-300">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mode de visualisation</span>
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                        <Button 
+                          variant={datavizMode === 'scatterplot' ? 'default' : 'secondary'} 
+                          size="sm" 
+                          className="text-xs h-8"
+                          onClick={() => setDatavizMode('scatterplot')}
+                        >Points ({stats.forestHa ? 'Local' : 'Local'})</Button>
+                        <Button 
+                          variant={datavizMode === 'hexagon' ? 'default' : 'secondary'} 
+                          size="sm" 
+                          className="text-xs h-8"
+                          onClick={() => setDatavizMode('hexagon')}
+                        >Hexagones</Button>
+                        <Button 
+                          variant={datavizMode === 'mvt' ? 'default' : 'secondary'} 
+                          size="sm" 
+                          className="text-xs h-8 col-span-2 lg:col-span-1"
+                          onClick={() => setDatavizMode('mvt')}
+                        >MVT Tile</Button>
+                      </div>
                     </div>
                   )}
                 </section>
