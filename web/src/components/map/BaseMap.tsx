@@ -6,6 +6,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useMapStore } from '@/store/useMapStore';
 import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { useTheme } from 'next-themes';
+import { getLabelColorRgb, getLabelColorHex } from '@/lib/constants';
+import Legend from './Legend';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
 import { api } from '@/lib/api';
@@ -78,17 +80,6 @@ export default function BaseMap() {
     }
   }, [setPixelInteraction]);
 
-  // Color mapping standardisé pour occupation du sol (6 classes)
-  const getLabelColor = (label: string): [number, number, number, number] => {
-    // Adapter selon vos vraies classes de modèle
-    if (label.toLowerCase().includes('forêt') || label === '1') return [34, 197, 94, 200]; // green-500
-    if (label.toLowerCase().includes('savane') || label === '2') return [234, 179, 8, 200]; // yellow-500
-    if (label.toLowerCase().includes('culture') || label === '3') return [249, 115, 22, 200]; // orange-500
-    if (label.toLowerCase().includes('urbain') || label === '4') return [239, 68, 68, 200]; // red-500
-    if (label.toLowerCase().includes('eau') || label === '5') return [59, 130, 246, 200]; // blue-500
-    return [156, 163, 175, 200]; // gray-400 (déforestation ou sol nu)
-  };
-
   // Les calques deck.gl
   const layers = useMemo(() => {
     return [
@@ -103,7 +94,7 @@ export default function BaseMap() {
         radiusMinPixels: 3,
         radiusMaxPixels: 100,
         getPosition: (d: any) => [d.longitude, d.latitude],
-        getFillColor: (d: any) => getLabelColor(d.prediction_label || String(d.prediction) || ''),
+        getFillColor: (d: any) => getLabelColorRgb(d.prediction_label || String(d.prediction) || ''),
       })
     ].filter(Boolean); // Enlève false si batch vide
   }, [batchPredictions]);
@@ -127,6 +118,9 @@ export default function BaseMap() {
         <NavigationControl position="bottom-right" />
         <ScaleControl position="bottom-left" />
 
+        {/* Légende de la carte */}
+        <Legend />
+        
         {/* Popup d'interaction Pixel */}
           {pixelInteraction.lat && pixelInteraction.lng && (
             <Popup
@@ -186,8 +180,11 @@ export default function BaseMap() {
                         {pixelInteraction.data.label}
                      </div>
                      {pixelInteraction.data.confidence && (
-                       <div className="text-xs flex items-center gap-1 mt-1 font-semibold dark:text-white text-black">
-                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                       <div className="text-xs flex items-center gap-1.5 mt-1 font-semibold dark:text-white text-black">
+                          <span 
+                            className="inline-block w-2.5 h-2.5 rounded-full shadow-sm"
+                            style={{ backgroundColor: getLabelColorHex(pixelInteraction.data.label || "") }}
+                          ></span>
                           Confiance: {(pixelInteraction.data.confidence * 100).toFixed(1)}%
                        </div>
                      )}
