@@ -15,8 +15,9 @@ export interface PredictPixelResponse {
 
 export interface PredictFileResponse {
   job_id: string;
-  filename: string;
-  rows_processed: number;
+  filename?: string;
+  rows_processed?: number;
+  is_mappable?: boolean;
   predictions: PredictPixelResponse[];
 }
 
@@ -25,6 +26,23 @@ const getDefaultHeaders = () => ({
 });
 
 export const api = {
+  /**
+   * Récupère un job depuis le backend de façon asynchrone (SWR)
+   */
+  async getJobResults(jobId: string): Promise<PredictFileResponse> {
+    const response = await fetch(`${API_URL}/predict/job/${jobId}`, {
+      method: 'GET',
+      headers: getDefaultHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(errorData || 'Erreur lors de la récupération du job');
+    }
+
+    return response.json();
+  },
+
   /**
    * Vérifie l'état de santé de l'API et si le modèle ML est chargé
    */

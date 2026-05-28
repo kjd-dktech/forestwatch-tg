@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useMemo, useCallback } from 'react';
-import Map, { NavigationControl, ScaleControl, Popup, useControl } from 'react-map-gl/maplibre';
+import React, { useMemo, useCallback, useRef, useEffect } from 'react';
+import Map, { NavigationControl, ScaleControl, Popup, useControl, MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import useSWR from 'swr';
 import { useMapStore } from '@/store/useMapStore';
 import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { useTheme } from 'next-themes';
@@ -13,7 +14,7 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 import { HexagonLayer } from '@deck.gl/aggregation-layers';
 import { MVTLayer } from '@deck.gl/geo-layers';
 import { api } from '@/lib/api';
-import { Loader2, AlertCircle, X } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 
@@ -24,10 +25,69 @@ function DeckGLOverlay(props: any) {
 }
 
 export default function BaseMap() {
+  const mapRef = useRef<MapRef>(null);
   const { viewState, setViewState } = useMapStore();
-  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions, batchJobId, datavizMode } = useAnalysisStore();
+  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions, setBatchPredictions, batchJobId, datavizMode } = useAnalysisStore();
   const { resolvedTheme } = useTheme();
   const [isDragging, setIsDragging] = React.useState(false);
+
+  // SWR Fetcher pour rattraper le state après reload
+  const fetcher = async (url: string) => {
+    const parts = url.split('/');
+    const jobId = parts[parts.length - 1];
+    return await api.getJobResults(jobId);
+  };
+
+  const { data: jobData } = useSWR(
+    batchJobId && batchPredictions.length === 0 ? `/predict/job/${batchJobId}` : null,
+    fetcher,
+    { revalidateOnFocus: false, shouldRetryOnError: false }
+  );
+
+  // Synchro des prédictions persistées
+  useEffect(() => {
+    if (jobData && jobData.predictions) {
+       setBatchPredictions(jobData.predictions, jobData.job_id);
+    }
+  }, [jobData, setBatchPredictions]);
+
+  // Auto-centrage automatique lors de l'arrivée (ou fetch) de nouvelles prédictions
+  useEffect(() => {
+    if (batchPredictions.length > 0 && mapRef.current) {
+        let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+        let hasValidCoords = false;
+
+        for (const pt of batchPredictions) {
+            if (pt.longitude != null && pt.latitude != null) {
+                hasValidCoords = true;
+                if (pt.longitude < minLng) minLng = pt.longitude;
+                if (pt.longitude > maxLng) maxLng = pt.longitude;
+                if (pt.latitude < minLat) minLat = pt.latitude;
+                if (pt.latitude > maxLat) maxLat = pt.latitude;
+            }
+        }
+
+        if (hasValidCoords && minLng !== Infinity && maxLng !== -Infinity) {
+             try {
+                // Seulement si ça n'est pas qu'un seul point
+                if (minLng !== maxLng && minLat !== maxLat) {
+                    mapRef.current.fitBounds(
+                        [[minLng, minLat], [maxLng, maxLat]],
+                        { padding: 60, duration: 1000 }
+                    );
+                } else {
+                    mapRef.current.flyTo({
+                        center: [minLng, minLat],
+                        zoom: 14,
+                        duration: 1000
+                    });
+                }
+             } catch (err) {
+                 console.warn("Erreur auto-centrage de la carte :", err);
+             }
+        }
+    }
+  }, [batchPredictions]);
 
   // Définition conditionnelle du style basé sur le thème (clair ou sombre)
   const mapStyle = useMemo(() => {
@@ -154,6 +214,7 @@ export default function BaseMap() {
   return (
     <div className="absolute inset-0 h-screen w-screen overflow-hidden">
       <Map
+        ref={mapRef}
         mapStyle={mapStyle}
         reuseMaps
         attributionControl={false}

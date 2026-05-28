@@ -8,7 +8,7 @@ import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { api } from '@/lib/api';
 
 export default function Sidebar() {
-  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setBatchPredictions, setIsBatchLoading, isBatchLoading, datavizMode, setDatavizMode, batchJobId } = useAnalysisStore();
+  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setSidebarOpen, clearPixelInteraction, setBatchPredictions, setIsBatchLoading, isBatchLoading, datavizMode, setDatavizMode, batchJobId } = useAnalysisStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Utilisation d'un state local monté pour éviter les erreurs d'hydratation (Next.js vs Zustand persist)
@@ -29,6 +29,8 @@ export default function Sidebar() {
     try {
       const data = await api.predictFile(file);
       setBatchPredictions(data.predictions, data.job_id);
+      clearPixelInteraction();
+      setSidebarOpen(false);
       
     } catch (err: any) {
       setUploadError(err.message || "Erreur lors de l'envoi du fichier.");
@@ -162,6 +164,16 @@ export default function Sidebar() {
                           onClick={() => setDatavizMode('mvt')}
                         >MVT Tile</Button>
                       </div>
+                      
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        className="text-xs h-8 mt-2 w-full"
+                        onClick={() => {
+                          setBatchPredictions([]);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >Effacer l'analyse spatiale</Button>
                     </div>
                   )}
                 </section>
