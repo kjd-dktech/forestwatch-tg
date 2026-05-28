@@ -36,6 +36,7 @@ interface AnalysisState {
   isBatchLoading: boolean;
 
   toggleSidebar: () => void;
+  setSidebarOpen: (isOpen: boolean) => void;
   toggleLayer: (layer: keyof AnalysisState['layers']) => void;
   setDate: (date: string) => void;
   setStats: (stats: AnalysisState['stats']) => void;
@@ -74,6 +75,7 @@ export const useAnalysisStore = create<AnalysisState>()(
       datavizMode: 'scatterplot',
       isBatchLoading: false,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      setSidebarOpen: (isOpen: boolean) => set({ isSidebarOpen: isOpen }),
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] },
@@ -92,7 +94,11 @@ export const useAnalysisStore = create<AnalysisState>()(
     }),
     {
       name: 'forestwatch-ui-storage',
-      partialize: (state) => ({ isSidebarOpen: state.isSidebarOpen, datavizMode: state.datavizMode }),
+      partialize: (state) => ({ 
+        isSidebarOpen: state.isSidebarOpen, 
+        datavizMode: state.datavizMode,
+        batchJobId: state.batchJobId
+      }),
     }
   )
 );
