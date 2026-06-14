@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import pandas as pd
 import numpy as np
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 import geopandas as gpd
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -92,8 +92,7 @@ app = FastAPI(
 app.add_middleware(RequestIDMiddleware)
 
 origins = [
-    "http://localhost:3000",
-    "https://symmetrical-umbrella-x5p9xw5qw7j7cv7gp-3000.app.github.dev/",
+    "*",
 ]
 
 app.add_middleware(
@@ -283,10 +282,17 @@ async def get_mvt_tile(request: Request, job_id: str, z: int, x: int, y: int):
         raise HTTPException(status_code=404, detail="Job ID introuvable ou expiré.")
     
     gdf = jobs[job_id]
-    
+
+    # Ensure the stored job is a GeoDataFrame (mappable)
+    if not isinstance(gdf, gpd.GeoDataFrame):
+        logger.warning(f"Requête de tuile pour un job non mappable: {job_id}")
+        raise HTTPException(status_code=404, detail="Ce job n'est pas mappable (pas de latitude/longitude).")
+
     bounds = mercantile.bounds(x, y, z)
-    subset = gdf.cx[bounds.west:bounds.east, bounds.south:bounds.north]
-    
+    bbox = box(bounds.west, bounds.south, bounds.east, bounds.north)
+    # Spatial filter using intersects (works even without .cx)
+    subset = gdf[gdf.geometry.intersects(bbox)]
+
     if subset.empty:
         return Response(content=b"", media_type="application/vnd.mapbox-vector-tile")
         
@@ -327,12 +333,17 @@ async def get_h3_aggregation(request: Request, job_id: str, resolution: int = 8)
         
     gdf = jobs[job_id]
 
+    # Ensure the stored job is a GeoDataFrame (mappable)
+    if not isinstance(gdf, gpd.GeoDataFrame):
+        logger.warning(f"H3 agrégation demandée pour un job non mappable: {job_id}")
+        raise HTTPException(status_code=404, detail="Ce job n'est pas mappable (pas de latitude/longitude).")
+
     def get_h3(row):
         try:
             return h3.latlng_to_cell(row.geometry.y, row.geometry.x, resolution)
-        except:
+        except Exception:
             return None
-            
+
     gdf['h3_index'] = gdf.apply(get_h3, axis=1)
     
     # Aggregation: mode & mean confidence
