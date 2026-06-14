@@ -32,6 +32,7 @@ interface AnalysisState {
   // État pour le batch upload
   batchPredictions: any[];
   batchJobId: string | null;
+  batchIsMappable: boolean;
   datavizMode: 'scatterplot' | 'hexagon' | 'mvt';
   isBatchLoading: boolean;
 
@@ -45,7 +46,7 @@ interface AnalysisState {
   setPixelInteraction: (data: Partial<AnalysisState['pixelInteraction']>) => void;
   clearPixelInteraction: () => void;
 
-  setBatchPredictions: (predictions: any[], jobId?: string) => void;
+  setBatchPredictions: (predictions: any[], jobId?: string, isMappable?: boolean) => void;
   setDatavizMode: (mode: 'scatterplot' | 'hexagon' | 'mvt') => void;
   setIsBatchLoading: (isLoading: boolean) => void;
 }
@@ -72,6 +73,7 @@ export const useAnalysisStore = create<AnalysisState>()(
       },
       batchPredictions: [],
       batchJobId: null,
+      batchIsMappable: false,
       datavizMode: 'scatterplot',
       isBatchLoading: false,
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
@@ -88,7 +90,7 @@ export const useAnalysisStore = create<AnalysisState>()(
         set((state) => ({
           pixelInteraction: { isLoading: false, error: null, data: null, lat: null, lng: null },
         })),
-      setBatchPredictions: (predictions, jobId) => set({ batchPredictions: predictions, batchJobId: jobId || null }),
+      setBatchPredictions: (predictions, jobId, isMappable = false) => set({ batchPredictions: predictions, batchJobId: jobId || null, batchIsMappable: isMappable }),
       setDatavizMode: (mode) => set({ datavizMode: mode }),
       setIsBatchLoading: (isLoading) => set({ isBatchLoading: isLoading }),
     }),
@@ -97,7 +99,8 @@ export const useAnalysisStore = create<AnalysisState>()(
       partialize: (state) => ({ 
         isSidebarOpen: state.isSidebarOpen, 
         datavizMode: state.datavizMode,
-        batchJobId: state.batchJobId
+        batchJobId: state.batchJobId,
+        batchIsMappable: state.batchIsMappable
       }),
     }
   )

@@ -8,7 +8,7 @@ import { useAnalysisStore } from '@/store/useAnalysisStore';
 import { api } from '@/lib/api';
 
 export default function Sidebar() {
-  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setSidebarOpen, clearPixelInteraction, setBatchPredictions, setIsBatchLoading, isBatchLoading, datavizMode, setDatavizMode, batchJobId } = useAnalysisStore();
+  const { layers, toggleLayer, stats, isSidebarOpen, toggleSidebar, setSidebarOpen, clearPixelInteraction, setBatchPredictions, setIsBatchLoading, isBatchLoading, datavizMode, setDatavizMode, batchJobId, batchIsMappable } = useAnalysisStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Utilisation d'un state local monté pour éviter les erreurs d'hydratation (Next.js vs Zustand persist)
@@ -28,7 +28,12 @@ export default function Sidebar() {
 
     try {
       const data = await api.predictFile(file);
-      setBatchPredictions(data.predictions, data.job_id);
+      setBatchPredictions(data.predictions, data.job_id, data.is_mappable);
+      // If backend says not mappable, force a safe dataviz mode
+      if (!data.is_mappable) {
+        setDatavizMode('scatterplot');
+        setUploadError('Le fichier ne contient pas de coordonnées géospatiales. Affichage tabulaire activé.');
+      }
       clearPixelInteraction();
       setSidebarOpen(false);
       
@@ -155,13 +160,19 @@ export default function Sidebar() {
                           variant={datavizMode === 'hexagon' ? 'default' : 'secondary'} 
                           size="sm" 
                           className="text-xs h-8"
-                          onClick={() => setDatavizMode('hexagon')}
+                          onClick={() => {
+                            if (!batchIsMappable) return setUploadError('Hexagones indisponibles: dataset sans coordonnées.');
+                            setDatavizMode('hexagon');
+                          }}
                         >Hexagones</Button>
                         <Button 
                           variant={datavizMode === 'mvt' ? 'default' : 'secondary'} 
                           size="sm" 
                           className="text-xs h-8 col-span-2 lg:col-span-1"
-                          onClick={() => setDatavizMode('mvt')}
+                          onClick={() => {
+                            if (!batchIsMappable) return setUploadError('MVT indisponible: dataset sans coordonnées.');
+                            setDatavizMode('mvt');
+                          }}
                         >MVT Tile</Button>
                       </div>
                       
