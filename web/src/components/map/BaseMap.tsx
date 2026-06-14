@@ -14,7 +14,7 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 import { HexagonLayer } from '@deck.gl/aggregation-layers';
 import { MVTLayer } from '@deck.gl/geo-layers';
 import { api } from '@/lib/api';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, LocateFixed } from 'lucide-react';
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 
@@ -27,9 +27,75 @@ function DeckGLOverlay(props: any) {
 export default function BaseMap() {
   const mapRef = useRef<MapRef>(null);
   const { viewState, setViewState } = useMapStore();
-  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions, setBatchPredictions, batchJobId, datavizMode } = useAnalysisStore();
+  const { pixelInteraction, setPixelInteraction, clearPixelInteraction, batchPredictions, setBatchPredictions, batchJobId, datavizMode, batchIsMappable } = useAnalysisStore();
   const { resolvedTheme } = useTheme();
   const [isDragging, setIsDragging] = React.useState(false);
+
+  // Calcule l'ancrage optimal du popup (top/bottom) en fonction de la latitude et de la hauteur de vue
+  const getOptimalAnchor = useCallback((): 'top' | 'bottom' => {
+    if (!mapRef.current || !pixelInteraction.lat) return 'bottom';
+    try {
+      // Récupère la hauteur de la carte et calcule le centre
+      const canvas = mapRef.current.getCanvas();
+      const mapHeight = canvas?.height || window.innerHeight;
+      
+      // Convertir la latitude en position y sur l'écran
+      const bounds = mapRef.current.getBounds();
+      if (!bounds) return 'bottom';
+      
+      const latRange = bounds.getNorth() - bounds.getSouth();
+      const latPosition = (pixelInteraction.lat - bounds.getSouth()) / latRange;
+      const screenY = (1 - latPosition) * mapHeight; // Inverted because screen coords are top-down
+      
+      // Si le popup serait au-dessus du point, mettre "top", sinon "bottom"
+      return screenY < mapHeight * 0.4 ? 'bottom' : 'top';
+    } catch (err) {
+      return 'bottom';
+    }
+  }, [pixelInteraction.lat]);
+
+  // Logique du bouton Recenter
+  const handleRecenter = useCallback(() => {
+    if (!mapRef.current) return;
+    
+    // 1. Si batch present et mappable → fitBounds
+    if (batchPredictions.length > 0 && batchIsMappable) {
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      let hasValidCoords = false;
+      
+      for (const pt of batchPredictions) {
+        if (pt.longitude != null && pt.latitude != null) {
+          hasValidCoords = true;
+          minLng = Math.min(minLng, pt.longitude);
+          maxLng = Math.max(maxLng, pt.longitude);
+          minLat = Math.min(minLat, pt.latitude);
+          maxLat = Math.max(maxLat, pt.latitude);
+        }
+      }
+      
+      if (hasValidCoords && minLng !== maxLng) {
+        mapRef.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 60, duration: 500 });
+        return;
+      }
+    }
+    
+    // 2. Sinon, si pixel popup actif → flyTo pixel
+    if (pixelInteraction.lat && pixelInteraction.lng) {
+      mapRef.current.flyTo({
+        center: [pixelInteraction.lng, pixelInteraction.lat],
+        zoom: 14,
+        duration: 500
+      });
+      return;
+    }
+    
+    // 3. Sinon → vue par défaut Togo
+    mapRef.current.flyTo({
+      center: [1.2, 6.5],
+      zoom: 7,
+      duration: 500
+    });
+  }, [batchPredictions, batchIsMappable, pixelInteraction]);
 
   // SWR Fetcher pour rattraper le state après reload
   const fetcher = async (url: string) => {
@@ -47,7 +113,7 @@ export default function BaseMap() {
   // Synchro des prédictions persistées
   useEffect(() => {
     if (jobData && jobData.predictions) {
-       setBatchPredictions(jobData.predictions, jobData.job_id);
+       setBatchPredictions(jobData.predictions, jobData.job_id, jobData.is_mappable);
     }
   }, [jobData, setBatchPredictions]);
 
@@ -145,8 +211,8 @@ export default function BaseMap() {
   const layers = useMemo(() => {
     const list = [];
     
-    // Scatterplot ou hexagon si on a un batch
-    if (batchPredictions.length > 0) {
+    // Scatterplot ou hexagon si on a un batch mappable
+    if (batchPredictions.length > 0 && batchIsMappable) {
       if (datavizMode === 'scatterplot') {
         list.push(
           new ScatterplotLayer({
@@ -191,8 +257,8 @@ export default function BaseMap() {
       }
     }
     
-    // Si on a un job_id coté backend, on peut mapper la layer MVT
-    if (batchJobId && datavizMode === 'mvt') {
+    // Si on a un job_id coté backend, et que le job est mappable, on peut mapper la layer MVT
+    if (batchJobId && datavizMode === 'mvt' && batchIsMappable) {
       const MVT_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       list.push(
         new MVTLayer({
@@ -230,6 +296,17 @@ export default function BaseMap() {
 
         <NavigationControl position="bottom-right" />
         <ScaleControl position="bottom-left" />
+        
+        {/* Bouton flottant Recenter */}
+        <div className="absolute bottom-24 right-4 z-20 flex items-center justify-center">
+          <button
+            onClick={handleRecenter}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-800 shadow-lg hover:shadow-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-all duration-200 cursor-pointer text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+            title="Recentrer la carte"
+          >
+            <LocateFixed className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Légende de la carte */}
         <Legend />
@@ -241,7 +318,7 @@ export default function BaseMap() {
               latitude={pixelInteraction.lat}
               closeButton={false}
               closeOnClick={false}
-              anchor="bottom"
+              anchor={getOptimalAnchor()}
               className="z-50"
             >
               <div 
